@@ -1,0 +1,87 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class ChangeRequest extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'rfc_number',
+        'title',
+        'application_id',
+        'submitted_by_id',
+        'created_by_id',
+        'is_physical_letter',
+        'physical_letter_number',
+        'reason_for_change',
+        'impact_description',
+        'status',
+        'change_type',
+        'emergency_unconfirmed',
+        'rejection_note',
+        'target_implementation_date',
+        'closed_at',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_physical_letter' => 'boolean',
+            'emergency_unconfirmed' => 'boolean',
+            'target_implementation_date' => 'datetime',
+            'closed_at' => 'datetime',
+        ];
+    }
+
+    public function application(): BelongsTo
+    {
+        return $this->belongsTo(Application::class);
+    }
+
+    public function submittedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'submitted_by_id');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_id');
+    }
+
+    public function riskAssessment(): HasOne
+    {
+        return $this->hasOne(RiskAssessment::class);
+    }
+
+    public function decisions(): HasMany
+    {
+        return $this->hasMany(Decision::class);
+    }
+
+    public function authorizationDocuments(): HasMany
+    {
+        return $this->hasMany(AuthorizationDocument::class);
+    }
+
+    public function releaseTasks(): HasMany
+    {
+        return $this->hasMany(ReleaseTask::class);
+    }
+
+    public function evidences(): HasMany
+    {
+        return $this->hasMany(Evidence::class);
+    }
+
+    public function comments(): HasMany
+    {
+        return $this->hasMany(Comment::class);
+    }
+}
