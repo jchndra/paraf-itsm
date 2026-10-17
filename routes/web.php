@@ -7,6 +7,8 @@ use App\Livewire\ChangeRequests\RecordDecision;
 use App\Livewire\ChangeRequests\ReviewCompleteness;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use App\Livewire\ChangeRequests\AssessRisk;
+use App\Livewire\ChangeRequests\UploadEvidence;
 
 Route::get('/', function () {
     return redirect()->route('change-requests.index');
@@ -31,4 +33,6 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/change-requests/create', CreateChangeRequest::class)->name('change-requests.create');
     Route::get('/change-requests/{rfc}', ReviewCompleteness::class)->name('change-requests.show');
     Route::get('/change-requests/{rfc}/decision', RecordDecision::class)->name('change-requests.decision');
+    Route::get('/change-requests/{rfc}/assess-risk', AssessRisk::class)->name('change-requests.assess-risk');
+    Route::get('/change-requests/{rfc}/evidence', UploadEvidence::class)->name('change-requests.evidence');
 });

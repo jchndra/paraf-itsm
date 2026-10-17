@@ -18,11 +18,17 @@
                     $statusClasses = [
                         'draft' => 'bg-slate-100 text-slate-700 border-slate-300',
                         'submitted' => 'bg-blue-100 text-blue-800 border-blue-200',
+                        'revision_required' => 'bg-amber-100 text-amber-800 border-amber-200',
                         'complete' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                        'assessed' => 'bg-purple-100 text-purple-800 border-purple-200',
                         'approved' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
                         'rejected' => 'bg-red-100 text-red-800 border-red-200',
-                        'revision_required' => 'bg-amber-100 text-amber-800 border-amber-200',
                         'revision_requested' => 'bg-amber-100 text-amber-800 border-amber-200',
+                        'scheduled' => 'bg-indigo-100 text-indigo-800 border-indigo-200',
+                        'executing' => 'bg-sky-100 text-sky-800 border-sky-200',
+                        'successful' => 'bg-teal-100 text-teal-800 border-teal-200',
+                        'rolled_back' => 'bg-rose-100 text-rose-800 border-rose-200',
+                        'closed' => 'bg-slate-200 text-slate-800 border-slate-400',
                     ];
                 @endphp
                 <span
@@ -34,7 +40,8 @@
         </div>
 
         <div class="flex items-center space-x-2 pl-9 sm:pl-0">
-            @if (auth()->user()->hasRole(['Change Manager', 'Super Admin']) && in_array($statusVal, ['complete', 'reviewed', 'submitted']))
+            @if (auth()->user()->hasRole(['Admin', 'Change Manager', 'Super Admin']) &&
+                    in_array($statusVal, ['complete', 'assessed', 'submitted']))
                 <a href="{{ route('change-requests.decision', $rfc->id) }}"
                     class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition"
                     wire:navigate>
@@ -165,24 +172,54 @@
                 @endif
             </div>
 
+            <!-- Daftar Bukti Implementasi Rilis -->
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h2 class="text-lg font-bold text-slate-800">Bukti Implementasi & Rilis</h2>
+                    <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-semibold">
+                        {{ $rfc->evidences ? $rfc->evidences->count() : 0 }} Dokumen
+                    </span>
+                </div>
+
+                @forelse($rfc->evidences ?? [] as $evidence)
+                    <div
+                        class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
+                        <div class="space-y-1">
+                            <strong
+                                class="text-slate-800 font-semibold block">{{ $evidence->original_filename }}</strong>
+                            <p class="text-slate-500">{{ $evidence->description }}</p>
+                            <span class="text-[10px] text-slate-400 block">Diunggah oleh:
+                                {{ $evidence->uploadedBy->name ?? '-' }} pada
+                                {{ $evidence->created_at ? $evidence->created_at->format('d/m/Y H:i') : '-' }}</span>
+                        </div>
+                        @if ($evidence->file_path)
+                            <a href="{{ Storage::url($evidence->file_path) }}" target="_blank"
+                                class="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-medium rounded hover:bg-indigo-100 transition">
+                                Lihat Berkas
+                            </a>
+                        @endif
+                    </div>
+                @empty
+                    <p class="text-xs text-slate-400 italic">Belum ada bukti implementasi yang diunggah.</p>
+                @endforelse
+            </div>
+
         </div>
 
         <!-- Right Column: Verification Action Panel -->
         <div class="space-y-6">
 
-            <!-- Panel Khusus Admin / Frontdesk -->
-            @if (auth()->user()->can('rfc.review_completeness'))
+            <!-- 1. Panel Khusus Admin / Frontdesk (Hanya muncul saat status submitted/revision_required) -->
+            @if (auth()->user()->can('rfc.review_completeness') && in_array($statusVal, ['submitted', 'revision_required']))
                 <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
                     <h2 class="text-lg font-bold text-slate-800 border-b border-slate-100 pb-3">Verifikasi Kelengkapan
-                        Admin
-                    </h2>
+                        Admin</h2>
 
                     <p class="text-xs text-slate-600 leading-relaxed">
                         Periksa kesesuaian data, keabsahan dokumen, dan kelengkapan administrasi RFC ini sebelum
                         meneruskannya ke Change Manager.
                     </p>
 
-                    <!-- Input Catatan Perbaikan/Revisi -->
                     <div class="space-y-2">
                         <label for="rejectionNote" class="block text-xs font-medium text-slate-700">
                             Catatan Perbaikan / Alasan Penolakan Berkas
@@ -196,7 +233,6 @@
                         @enderror
                     </div>
 
-                    <!-- Tombol Aksi Admin -->
                     <div class="pt-2 space-y-2">
                         <button type="button" wire:click="markAsComplete" wire:loading.attr="disabled"
                             class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg text-sm shadow-sm transition flex items-center justify-center space-x-2">
@@ -219,8 +255,31 @@
                 </div>
             @endif
 
-            <!-- Panel Otorisasi Khusus Change Manager -->
-            @if (auth()->user()->hasRole(['Change Manager', 'Super Admin']) && in_array($statusVal, ['complete', 'reviewed', 'submitted']))
+            <!-- 2. Panel Penilaian Risiko (Dapat diakses Admin / Assessor / Super Admin) -->
+            @if (auth()->user()->hasRole(['Admin', 'Assessor', 'Super Admin']) || auth()->user()->can('rfc.assess_risk'))
+                @if (in_array($statusVal, ['complete', 'submitted']))
+                    <div class="bg-amber-50 p-6 rounded-xl border border-amber-200 shadow-sm space-y-3">
+                        <h2 class="text-base font-bold text-amber-900">Penilaian Risiko & Dampak Teknis</h2>
+                        <p class="text-xs text-amber-700">
+                            RFC ini memerlukan penyusunan matriks risiko, rencana mitigasi, dan rencana rollback sebelum
+                            diajukan ke Change Manager.
+                        </p>
+                        <a href="{{ route('change-requests.assess-risk', $rfc->id) }}"
+                            class="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg text-sm shadow-sm transition flex items-center justify-center space-x-2"
+                            wire:navigate>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Isi Penilaian Risiko (Risk Assessment)</span>
+                        </a>
+                    </div>
+                @endif
+            @endif
+
+            <!-- 3. Panel Otorisasi Keputusan Change Manager / Admin -->
+            @if (auth()->user()->hasRole(['Admin', 'Change Manager', 'Super Admin']) &&
+                    in_array($statusVal, ['complete', 'assessed', 'submitted']))
                 <div class="bg-indigo-50 p-6 rounded-xl border border-indigo-200 shadow-sm space-y-3">
                     <h2 class="text-base font-bold text-indigo-900">Otorisasi Keputusan Change Manager</h2>
                     <p class="text-xs text-indigo-700">
@@ -238,6 +297,47 @@
                     </a>
                 </div>
             @endif
+
+            <!-- 4. Panel Unggah Bukti Rilis (Saat Status Approved / Executing) -->
+            @if (in_array($statusVal, ['approved', 'executing', 'scheduled']))
+                <div class="bg-blue-50 p-6 rounded-xl border border-blue-200 shadow-sm space-y-3">
+                    <h2 class="text-base font-bold text-blue-900">Pelaksanaan & Rilis Perubahan</h2>
+                    <p class="text-xs text-blue-700">
+                        Perubahan telah disetujui. Silakan unggah bukti hasil implementasi/UAT setelah perubahan
+                        berhasil dipasang.
+                    </p>
+                    <a href="{{ route('change-requests.evidence', $rfc->id) }}"
+                        class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm shadow-sm transition flex items-center justify-center space-x-2"
+                        wire:navigate>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <span>Unggah Bukti Implementasi</span>
+                    </a>
+                </div>
+            @endif
+
+            <!-- 5. Informational Status Tracker (Penjamin agar kolom kanan tidak pernah kosong) -->
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <h2 class="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2">Status & Informasi Alur
+                </h2>
+                <p class="text-xs text-slate-600 leading-relaxed">
+                    @if ($statusVal === 'complete')
+                        Berkas telah dinyatakan <strong>Lengkap</strong>. RFC ini siap untuk dilakukan Penilaian Risiko
+                        Teknis atau Catat Keputusan Otorisasi.
+                    @elseif ($statusVal === 'assessed')
+                        Penilaian risiko teknis telah diselesaikan. Menunggu proses Otorisasi Keputusan Change Manager.
+                    @elseif ($statusVal === 'approved')
+                        RFC telah <strong>Disetujui</strong> oleh Change Manager. Silakan lakukan implementasi rilis dan
+                        unggah bukti.
+                    @elseif ($statusVal === 'successful' || $statusVal === 'closed')
+                        Implementasi rilis telah berhasil dilaksanakan dan RFC dinyatakan <strong>Ditutup</strong>.
+                    @else
+                        RFC ini sedang dalam peninjauan administrasi oleh tim Admin.
+                    @endif
+                </p>
+            </div>
 
             <!-- Metadata Info -->
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-500 space-y-2">

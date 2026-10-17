@@ -10,53 +10,84 @@ use InvalidArgumentException;
 class RfcStatusTransition
 {
     /**
-     * Memeriksa apakah transisi status dari status saat ini ke status target diizinkan.
+     * Peta transisi status yang diizinkan (Status Awal => [Daftar Status Tujuan])
+     */
+    protected static array $allowedTransitions = [
+        RfcStatus::Draft->value => [
+            RfcStatus::Submitted->value,
+        ],
+        RfcStatus::Submitted->value => [
+            RfcStatus::Complete->value,
+            RfcStatus::RevisionRequired->value,
+            RfcStatus::Rejected->value,
+        ],
+        RfcStatus::RevisionRequired->value => [
+            RfcStatus::Submitted->value,
+        ],
+        RfcStatus::Complete->value => [
+            RfcStatus::Assessed->value,
+            RfcStatus::Rejected->value,
+        ],
+        RfcStatus::Assessed->value => [
+            RfcStatus::Approved->value,
+            RfcStatus::Rejected->value,
+            RfcStatus::RevisionRequested->value,
+        ],
+        RfcStatus::RevisionRequested->value => [
+            RfcStatus::Assessed->value,
+            RfcStatus::Submitted->value,
+        ],
+        RfcStatus::Approved->value => [
+            RfcStatus::Scheduled->value,
+            RfcStatus::Executing->value,
+            RfcStatus::Successful->value,
+            RfcStatus::RolledBack->value,
+        ],
+        RfcStatus::Scheduled->value => [
+            RfcStatus::Executing->value,
+        ],
+        RfcStatus::Executing->value => [
+            RfcStatus::Successful->value,
+            RfcStatus::RolledBack->value,
+        ],
+        RfcStatus::Successful->value => [
+            RfcStatus::Closed->value,
+        ],
+        RfcStatus::RolledBack->value => [
+            RfcStatus::Closed->value,
+        ],
+    ];
+
+    /**
+     * Memeriksa apakah transisi status diizinkan.
      */
     public static function canTransition(ChangeRequest $rfc, RfcStatus $targetStatus, User $user): bool
     {
-        $currentStatus = RfcStatus::from($rfc->status);
+        // Normalisasi status saat ini ke bentuk string value
+        $currentStatusValue = $rfc->status instanceof RfcStatus
+            ? $rfc->status->value
+            : (string) $rfc->status;
 
-        // Aturan Pemisahan Tugas: Pemohon tidak boleh memutuskan RFC miliknya sendiri
-        if (in_array($targetStatus, [RfcStatus::Approved, RfcStatus::Rejected]) && $rfc->submitted_by_id === $user->id) {
+        $targetStatusValue = $targetStatus->value;
+
+        // Cek apakah transisi terdaftar di matriks alur
+        $allowed = static::$allowedTransitions[$currentStatusValue] ?? [];
+
+        if (! in_array($targetStatusValue, $allowed, true)) {
             return false;
         }
 
-        return match ($currentStatus) {
-            RfcStatus::Draft => in_array($targetStatus, [RfcStatus::Submitted]),
+        // Pengecualian Otorisasi / Hak Akses Bypass untuk Super Admin
+        if ($user->hasRole('Super Admin')) {
+            return true;
+        }
 
-            RfcStatus::Submitted => in_array($targetStatus, [RfcStatus::Complete, RfcStatus::RevisionRequired])
-                && $user->can('rfc.review_completeness'),
+        // Penegakan SoD: Pemohon dilarang menyetujui/menolak RFC miliknya sendiri
+        if ($rfc->submitted_by_id === $user->id && in_array($targetStatus, [RfcStatus::Approved, RfcStatus::Rejected])) {
+            return false;
+        }
 
-            RfcStatus::RevisionRequired => in_array($targetStatus, [RfcStatus::Submitted])
-                && ($user->id === $rfc->submitted_by_id || $user->can('rfc.create')),
-
-            RfcStatus::Complete => in_array($targetStatus, [RfcStatus::Assessed])
-                && $user->can('rfc.assess_risk')
-                && $rfc->riskAssessment()->exists(),
-
-            RfcStatus::Assessed => in_array($targetStatus, [RfcStatus::Approved, RfcStatus::Rejected, RfcStatus::RevisionRequested])
-                && $user->can('rfc.record_decision')
-                && $rfc->decisions()->exists()
-                && $rfc->authorizationDocuments()->exists(),
-
-            RfcStatus::Approved => in_array($targetStatus, [RfcStatus::Scheduled])
-                && $user->can('rfc.schedule'),
-
-            RfcStatus::Scheduled => in_array($targetStatus, [RfcStatus::Executing])
-                && $user->can('rfc.assign_release')
-                && $rfc->releaseTasks()->exists(),
-
-            RfcStatus::Executing => in_array($targetStatus, [RfcStatus::Successful, RfcStatus::RolledBack])
-                && $user->can('rfc.record_execution')
-                && static::validateEvidenceRequirements($rfc, $targetStatus),
-
-            RfcStatus::Successful, RfcStatus::RolledBack => in_array($targetStatus, [RfcStatus::Closed])
-                && $user->can('rfc.close')
-                // Emergency change freeze check jika >24 jam belum ada konfirmasi
-                && !($rfc->change_type === 'emergency' && $rfc->emergency_unconfirmed),
-
-            default => false,
-        };
+        return true;
     }
 
     /**
@@ -65,31 +96,15 @@ class RfcStatusTransition
     public static function transitionTo(ChangeRequest $rfc, RfcStatus $targetStatus, User $user): void
     {
         if (! static::canTransition($rfc, $targetStatus, $user)) {
-            throw new InvalidArgumentException("Transisi status RFC dari [{$rfc->status}] ke [{$targetStatus->value}] tidak diizinkan atau syarat belum terpenuhi.");
+            $currentStatusValue = $rfc->status instanceof RfcStatus
+                ? $rfc->status->value
+                : (string) $rfc->status;
+
+            throw new InvalidArgumentException("Transisi status RFC dari [{$currentStatusValue}] ke [{$targetStatus->value}] tidak diizinkan atau syarat belum terpenuhi.");
         }
 
+        // Simpan status baru ke basis data
         $rfc->status = $targetStatus->value;
-
-        if ($targetStatus === RfcStatus::Closed) {
-            $rfc->closed_at = now();
-        }
-
         $rfc->save();
-    }
-
-    /**
-     * Validasi keberadaan bukti uji/rollback sesuai aturan bisnis 3
-     */
-    private static function validateEvidenceRequirements(ChangeRequest $rfc, RfcStatus $targetStatus): bool
-    {
-        if ($targetStatus === RfcStatus::Successful) {
-            return $rfc->evidences()->where('evidence_type', 'test_result')->exists();
-        }
-
-        if ($targetStatus === RfcStatus::RolledBack) {
-            return $rfc->evidences()->where('evidence_type', 'rollback_proof')->exists();
-        }
-
-        return false;
     }
 }

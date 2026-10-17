@@ -9,88 +9,112 @@ use App\Models\User;
 use App\StateMachines\RfcStatusTransition;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
+#[Layout('layouts.app')]
 class AssessRisk extends Component
 {
     public ChangeRequest $rfc;
 
-    // Skor Numerik
-    public int $systemCriticalityScore = 3;
-    public int $impactScopeScore = 3;
-    public int $rollbackReadinessScore = 2;
+    public string $impact_level = 'medium';
+    public string $probability_level = 'medium';
+    public string $overall_risk_level = 'medium';
+    public string $mitigation_plan = '';
+    public string $rollback_plan = '';
+    public string $testing_plan = '';
 
-    // Tingkat Risiko (Low, Medium, High, Critical)
-    public string $riskLevel = 'medium';
-    public string $mitigationPlan = '';
-    public string $rollbackPlan = '';
+    protected array $rules = [
+        'impact_level' => 'required|in:low,medium,high',
+        'probability_level' => 'required|in:low,medium,high',
+        'overall_risk_level' => 'required|in:low,medium,high,emergency',
+        'mitigation_plan' => 'required|string|min:10',
+        'rollback_plan' => 'required|string|min:10',
+        'testing_plan' => 'required|string|min:10',
+    ];
 
-    protected function rules(): array
-    {
-        return [
-            'systemCriticalityScore' => 'required|integer|min:1|max:5',
-            'impactScopeScore' => 'required|integer|min:1|max:5',
-            'rollbackReadinessScore' => 'required|integer|min:1|max:5',
-            'riskLevel' => 'required|in:low,medium,high,critical',
-            'mitigationPlan' => 'required|string|min:10',
-            'rollbackPlan' => 'required|string|min:10',
-        ];
-    }
+    protected array $messages = [
+        'impact_level.required' => 'Tingkat dampak sistem wajib dipilih.',
+        'probability_level.required' => 'Tingkat kemutakhiran/probabilitas risiko wajib dipilih.',
+        'overall_risk_level.required' => 'Tingkat risiko keseluruhan wajib ditentukan.',
+        'mitigation_plan.required' => 'Rencana mitigasi risiko wajib diisi.',
+        'mitigation_plan.min' => 'Rencana mitigasi minimal terdiri dari 10 karakter.',
+        'rollback_plan.required' => 'Rencana pengembalian (rollback plan) wajib diisi.',
+        'rollback_plan.min' => 'Rencana rollback minimal terdiri dari 10 karakter.',
+        'testing_plan.required' => 'Rencana pengujian (testing plan) wajib diisi.',
+        'testing_plan.min' => 'Rencana pengujian minimal terdiri dari 10 karakter.',
+    ];
 
     public function mount(ChangeRequest $rfc): void
     {
-        /** @var User $user */
+        /** @var User|null $user */
         $user = Auth::user();
 
-        if (! $user->can('rfc.assess_risk')) {
-            abort(403, 'Anda tidak memiliki hak akses untuk melakukan analisis risiko.');
+        if (! $user || ! $user->can('rfc.assess_risk')) {
+            abort(403, 'Anda tidak memiliki otorisasi untuk melakukan penilaian risiko RFC.');
         }
 
-        $this->rfc = $rfc;
+        if ($rfc->submitted_by_id === $user->id && ! $user->hasRole('Super Admin')) {
+            abort(403, 'Aturan SoD: Anda tidak boleh menilai risiko pada RFC yang Anda ajukan sendiri.');
+        }
 
-        if ($rfc->riskAssessment) {
-            $this->systemCriticalityScore = $rfc->riskAssessment->system_criticality_score ?? 3;
-            $this->impactScopeScore = $rfc->riskAssessment->impact_scope_score ?? 3;
-            $this->rollbackReadinessScore = $rfc->riskAssessment->rollback_readiness_score ?? 2;
-            $this->riskLevel = $rfc->riskAssessment->risk_level ?? 'medium';
-            $this->mitigationPlan = $rfc->riskAssessment->mitigation_plan ?? '';
-            $this->rollbackPlan = $rfc->riskAssessment->rollback_plan ?? '';
+        $this->rfc = $rfc->load(['application.opd', 'submittedBy', 'riskAssessment']);
+
+        if ($this->rfc->riskAssessment) {
+            $assessment = $this->rfc->riskAssessment;
+            $this->overall_risk_level = $assessment->risk_level ?? 'medium';
+            $this->mitigation_plan = $assessment->mitigation_plan ?? '';
+            $this->rollback_plan = $assessment->rollback_plan ?? '';
         }
     }
 
-    public function saveRiskAssessment(): void
+    public function saveAssessment(): void
     {
         $this->validate();
 
         /** @var User $user */
         $user = Auth::user();
 
-        $totalScore = $this->systemCriticalityScore + $this->impactScopeScore + $this->rollbackReadinessScore;
+        $scoreMap = [
+            'low' => 1,
+            'medium' => 3,
+            'high' => 5,
+            'emergency' => 5,
+        ];
 
-        RiskAssessment::updateOrCreate(
-            ['change_request_id' => $this->rfc->id],
-            [
-                'assessed_by_id' => $user->id,
-                'system_criticality_score' => $this->systemCriticalityScore,
-                'impact_scope_score' => $this->impactScopeScore,
-                'rollback_readiness_score' => $this->rollbackReadinessScore,
-                'total_score' => $totalScore,
-                'risk_level' => $this->riskLevel,
-                'mitigation_plan' => $this->mitigationPlan,
-                'rollback_plan' => $this->rollbackPlan,
-            ]
-        );
+        $impactScore = $scoreMap[$this->impact_level] ?? 3;
+        $likelihoodScore = $scoreMap[$this->probability_level] ?? 3;
+        $criticalityScore = 3;
+        $rollbackReadinessScore = 3;
+        $totalScore = $impactScore * $likelihoodScore;
 
-        if ($this->rfc->status === RfcStatus::Complete->value) {
+        DB::transaction(function () use ($user, $impactScore, $criticalityScore, $rollbackReadinessScore, $totalScore) {
+            RiskAssessment::updateOrCreate(
+                ['change_request_id' => $this->rfc->id],
+                [
+                    'assessed_by_id' => $user->id,
+                    'system_criticality_score' => $criticalityScore,
+                    'impact_scope_score' => $impactScore,
+                    'rollback_readiness_score' => $rollbackReadinessScore,
+                    'total_score' => $totalScore,
+                    'risk_level' => $this->overall_risk_level,
+                    'mitigation_plan' => $this->mitigation_plan,
+                    'rollback_plan' => $this->rollback_plan,
+                ]
+            );
+
+            $this->rfc->update([
+                'risk_level' => $this->overall_risk_level,
+            ]);
+
             RfcStatusTransition::transitionTo($this->rfc, RfcStatus::Assessed, $user);
-        }
+        });
 
-        session()->flash('message', 'Analisis risiko berhasil disimpan.');
-        $this->redirect(route('change-requests.show', $this->rfc->id));
+        session()->flash('message', "Penilaian risiko untuk RFC {$this->rfc->rfc_number} berhasil disimpan.");
+        $this->redirect(route('change-requests.show', $this->rfc->id), navigate: true);
     }
 
-    #[Layout('layouts.app')]
     public function render(): View
     {
         return view('livewire.change-requests.assess-risk');

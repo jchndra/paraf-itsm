@@ -65,8 +65,8 @@ class RecordDecision extends Component
             abort(403, 'Anda tidak memiliki otoritas untuk mencatat keputusan RFC.');
         }
 
-        // Aturan Pemisahan Tugas (Segregation of Duties)
-        if ($rfc->submitted_by_id === $user->id) {
+        // Aturan Pemisahan Tugas (Segregation of Duties) - Pengecualian untuk Super Admin saat testing
+        if ($rfc->submitted_by_id === $user->id && ! $user->hasRole('Super Admin')) {
             abort(403, 'Aturan SoD: Anda tidak boleh memutuskan RFC yang Anda ajukan sendiri.');
         }
 

@@ -20,18 +20,23 @@ test('change manager dapat mengisi analisis risiko dan mengubah status menjadi a
     $cm = User::factory()->create();
     $cm->assignRole('Change Manager');
 
-    $rfc = ChangeRequest::factory()->create(['status' => RfcStatus::Complete->value]);
+    $pemohon = User::factory()->create();
+
+    $rfc = ChangeRequest::factory()->create([
+        'submitted_by_id' => $pemohon->id,
+        'status' => RfcStatus::Complete->value,
+    ]);
 
     $this->actingAs($cm);
 
     Livewire::test(\App\Livewire\ChangeRequests\AssessRisk::class, ['rfc' => $rfc])
-        ->set('systemCriticalityScore', 4)
-        ->set('impactScopeScore', 3)
-        ->set('rollbackReadinessScore', 2)
-        ->set('riskLevel', 'medium')
-        ->set('mitigationPlan', 'Rencana mitigasi penggantian server cadangan.')
-        ->set('rollbackPlan', 'Rencana rollback mengembalikan snapshot VM.')
-        ->call('saveRiskAssessment')
+        ->set('impact_level', 'medium')
+        ->set('probability_level', 'medium')
+        ->set('overall_risk_level', 'medium')
+        ->set('mitigation_plan', 'Rencana mitigasi penggantian server cadangan.')
+        ->set('rollback_plan', 'Rencana rollback mengembalikan snapshot VM.')
+        ->set('testing_plan', 'Rencana pengujian menyeluruh pada lingkungan staging.')
+        ->call('saveAssessment')
         ->assertHasNoErrors();
 
     expect($rfc->fresh()->status)->toBe(RfcStatus::Assessed->value);
@@ -72,6 +77,7 @@ test('keputusan otorisasi menghasilkan dokumen dengan checksum sha256', function
     Livewire::test(\App\Livewire\ChangeRequests\RecordDecision::class, ['rfc' => $rfc])
         ->set('authorityId', $authority->id)
         ->set('decisionStatus', 'approved')
+        ->set('documentType', 'cab_minutes')
         ->set('notes', 'Disetujui berdasarkan hasil evaluasi teknis.')
         ->set('documentNumber', '500/SK-CAB/2026')
         ->set('documentFile', $file)

@@ -2,9 +2,12 @@
 
 use App\Livewire\Auth\Login;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+
+uses(RefreshDatabase::class);
 
 beforeEach(function () {
     RateLimiter::clear(Str::transliterate(Str::lower('user@paraf.local') . '|127.0.0.1'));
