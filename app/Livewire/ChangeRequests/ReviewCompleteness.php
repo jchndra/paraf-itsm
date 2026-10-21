@@ -3,88 +3,75 @@
 namespace App\Livewire\ChangeRequests;
 
 use App\Enums\RfcStatus;
+use App\Exceptions\InvalidRfcStatusTransitionException;
 use App\Models\ChangeRequest;
-use App\Models\User;
-use App\Notifications\RfcStatusChangedNotification;
 use App\StateMachines\RfcStatusTransition;
-use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
-use Livewire\Attributes\Layout;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
-#[Layout('layouts.app')]
 class ReviewCompleteness extends Component
 {
     public ChangeRequest $rfc;
-    public string $rejectionNote = '';
+
+    public string $action = RfcStatus::TICKET_CREATED->value;
+
+    public string $note = '';
 
     public function mount(ChangeRequest $rfc): void
     {
-        /** @var User $user */
-        $user = Auth::user();
-
-        if (! $user->can('rfc.review_completeness')) {
-            abort(403, 'Hanya Admin/Frontdesk yang dapat melakukan verifikasi kelengkapan.');
-        }
-
-        $this->rfc = $rfc->load(['application.opd', 'submittedBy', 'createdBy']);
+        $this->authorize('reviewCompleteness', $rfc);
+        $this->rfc = $rfc;
     }
 
-    public function markAsComplete(): void
+    public function submitReview(): void
     {
-        /** @var User $user */
-        $user = Auth::user();
+        $this->authorize('reviewCompleteness', $this->rfc);
 
-        $prevStatus = $this->rfc->status;
-
-        RfcStatusTransition::transitionTo($this->rfc, RfcStatus::Complete, $user);
-
-        if ($this->rfc->submittedBy) {
-            $this->rfc->submittedBy->notify(new RfcStatusChangedNotification(
-                $this->rfc,
-                $prevStatus,
-                RfcStatus::Complete->value ?? (string) RfcStatus::Complete,
-                'Dokumen dan data RFC dinyatakan lengkap oleh Admin.'
-            ));
-        }
-
-        session()->flash('message', "RFC {$this->rfc->rfc_number} berhasil diverifikasi LENGKAP dan diteruskan ke Change Manager.");
-        $this->redirect(route('change-requests.show', $this->rfc->id), navigate: true);
-    }
-
-    public function requestRevision(): void
-    {
         $this->validate([
-            'rejectionNote' => 'required|string|min:10',
-        ], [
-            'rejectionNote.required' => 'Catatan kekurangan berkas/revisi wajib diisi.',
-            'rejectionNote.min' => 'Catatan revisi minimal terdiri dari 10 karakter.',
+            'action' => 'required|in:'.implode(',', [
+                RfcStatus::TICKET_CREATED->value,
+                RfcStatus::NEEDS_REVISION->value,
+                RfcStatus::REJECTED->value,
+            ]),
+            'note' => 'required_if:action,'.RfcStatus::NEEDS_REVISION->value.','.RfcStatus::REJECTED->value.'|nullable|string|max:1000',
         ]);
 
-        /** @var User $user */
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $prevStatus = $this->rfc->status;
+        try {
+            DB::transaction(function () use ($user) {
+                if ($this->action === RfcStatus::TICKET_CREATED->value) {
+                    $this->rfc->update(['rejection_note' => null]);
+                    RfcStatusTransition::transitionTo($this->rfc, RfcStatus::TICKET_CREATED, $user);
+                } elseif ($this->action === RfcStatus::NEEDS_REVISION->value) {
+                    $this->rfc->update(['rejection_note' => $this->note]);
+                    RfcStatusTransition::transitionTo($this->rfc, RfcStatus::NEEDS_REVISION, $user, $this->note);
+                } else {
+                    $this->rfc->update(['rejection_note' => $this->note]);
+                    RfcStatusTransition::transitionTo($this->rfc, RfcStatus::REJECTED, $user, $this->note);
+                }
+            });
 
-        $this->rfc->rejection_note = $this->rejectionNote;
-        $this->rfc->save();
+            session()->flash(
+                'message',
+                match ($this->action) {
+                    RfcStatus::TICKET_CREATED->value => 'Dokumen RFC dinyatakan lengkap dan diteruskan ke Change Manager.',
+                    RfcStatus::NEEDS_REVISION->value => 'Dokumen RFC telah dikembalikan ke Pemohon untuk perbaikan.',
+                    default => 'Dokumen RFC telah ditolak.',
+                }
+            );
+        } catch (InvalidRfcStatusTransitionException $exception) {
+            $this->addError('status', $exception->getMessage());
 
-        RfcStatusTransition::transitionTo($this->rfc, RfcStatus::RevisionRequired, $user);
-
-        if ($this->rfc->submittedBy) {
-            $this->rfc->submittedBy->notify(new RfcStatusChangedNotification(
-                $this->rfc,
-                $prevStatus,
-                RfcStatus::RevisionRequired->value ?? (string) RfcStatus::RevisionRequired,
-                $this->rejectionNote
-            ));
+            return;
         }
 
-        session()->flash('message', "Permintaan perbaikan data untuk RFC {$this->rfc->rfc_number} telah dikirimkan ke pemohon.");
-        $this->redirect(route('change-requests.show', $this->rfc->id), navigate: true);
+        $this->redirectRoute('change-requests.index');
     }
 
-    public function render(): View
+    public function render()
     {
         return view('livewire.change-requests.review-completeness');
     }

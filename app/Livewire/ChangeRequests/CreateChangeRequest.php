@@ -2,9 +2,11 @@
 
 namespace App\Livewire\ChangeRequests;
 
+use App\Enums\RfcStatus;
 use App\Models\Application;
 use App\Models\ChangeRequest;
 use App\Models\User;
+use App\Services\RfcNumberGenerator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
@@ -24,8 +26,15 @@ class CreateChangeRequest extends Component
     public bool $is_physical_letter = false;
     public string $physical_letter_number = '';
 
-    public function save(string $targetStatus = 'draft'): void
+    public function mount(): void
     {
+        $this->authorize('create', ChangeRequest::class);
+    }
+
+    public function save(string $targetStatus = RfcStatus::DRAFT->value): void
+    {
+        $this->authorize('create', ChangeRequest::class);
+
         $this->validate([
             'title' => 'required|string|max:255',
             'application_id' => 'required|exists:applications,id',
@@ -49,10 +58,11 @@ class CreateChangeRequest extends Component
         /** @var User $user */
         $user = Auth::user();
 
-        // Penomoran Otomatis RFC (Format: RFC-YYYY-XXXX)
-        $year = date('Y');
-        $latestCount = ChangeRequest::whereYear('created_at', $year)->count() + 1;
-        $rfcNumber = sprintf('RFC-%s-%04d', $year, $latestCount);
+        $rfcNumber = RfcNumberGenerator::generate();
+
+        $status = $targetStatus === RfcStatus::SUBMITTED->value
+            ? RfcStatus::SUBMITTED
+            : RfcStatus::DRAFT;
 
         $rfc = ChangeRequest::create([
             'rfc_number' => $rfcNumber,
@@ -65,18 +75,21 @@ class CreateChangeRequest extends Component
             'target_implementation_date' => $this->target_implementation_date,
             'is_physical_letter' => $this->is_physical_letter,
             'physical_letter_number' => $this->is_physical_letter ? $this->physical_letter_number : null,
-            'status' => $targetStatus === 'submitted' ? 'submitted' : 'draft',
+            'status' => $status->value,
         ]);
 
         activity('rfc')
             ->performedOn($rfc)
             ->causedBy($user)
-            ->log($targetStatus === 'submitted' ? 'RFC resmi diajukan' : 'Draft RFC disimpan');
+            ->log($status === RfcStatus::SUBMITTED ? 'RFC resmi diajukan' : 'Draft RFC disimpan');
 
-        $statusMessage = $targetStatus === 'submitted' ? 'berhasil diajukan' : 'berhasil disimpan sebagai draft';
+        $statusMessage = $status === RfcStatus::SUBMITTED ? 'berhasil diajukan' : 'berhasil disimpan sebagai draft';
         session()->flash('message', "Permohonan {$rfc->rfc_number} {$statusMessage}.");
 
-        $this->redirect(route('change-requests.index'), navigate: true);
+        $this->redirect(
+            $user->isStaff() ? route('change-requests.index') : route('requester.dashboard'),
+            navigate: true
+        );
     }
 
     public function render(): View

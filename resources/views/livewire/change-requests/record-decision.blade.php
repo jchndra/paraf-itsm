@@ -37,6 +37,17 @@
         </div>
     </div>
 
+    @error('status')
+        <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
+            {{ $message }}</div>
+    @enderror
+
+    @unless ($rfc->riskAssessment)
+        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-700">
+            Analisis risiko belum dilakukan. Keputusan otorisasi belum dapat direkam.
+        </div>
+    @endunless
+
     <!-- Form Pencatatan Keputusan -->
     <form wire:submit.prevent="saveDecision"
         class="bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
@@ -65,9 +76,9 @@
                     *</label>
                 <select id="decisionStatus" wire:model="decisionStatus"
                     class="w-full text-sm px-3.5 py-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 {{ $errors->has('decisionStatus') ? 'border-red-500' : 'border-slate-300' }}">
-                    <option value="approved">Disetujui (Approved)</option>
-                    <option value="revision_requested">Perlu Revisi (Revision Requested)</option>
-                    <option value="rejected">Ditolak (Rejected)</option>
+                    @foreach (\App\Enums\DecisionStatus::cases() as $option)
+                        <option value="{{ $option->value }}">{{ $option->label() }}</option>
+                    @endforeach
                 </select>
                 @error('decisionStatus')
                     <span class="text-xs text-red-500 block mt-1">{{ $message }}</span>

@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\RfcStatus;
 use App\Models\Application;
 use App\Models\ChangeRequest;
 use App\Models\User;
@@ -23,7 +24,7 @@ class ChangeRequestFactory extends Factory
             'reason_for_change' => $this->faker->paragraph(),
             'impact_description' => $this->faker->paragraph(),
             'change_type' => 'normal',
-            'status' => 'submitted',
+            'status' => RfcStatus::SUBMITTED->value,
             'target_implementation_date' => now()->addDays(3),
         ];
     }

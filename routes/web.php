@@ -1,26 +1,51 @@
 <?php
 
 use App\Livewire\Auth\Login;
+use App\Livewire\ChangeRequests\AssessRisk;
+use App\Livewire\ChangeRequests\CloseRfc;
 use App\Livewire\ChangeRequests\CreateChangeRequest;
+use App\Livewire\ChangeRequests\ImplementChange;
 use App\Livewire\ChangeRequests\ListChangeRequests;
 use App\Livewire\ChangeRequests\RecordDecision;
 use App\Livewire\ChangeRequests\ReviewCompleteness;
+use App\Livewire\ChangeRequests\ShowChangeRequest;
+use App\Livewire\ChangeRequests\UploadEvidence;
+use App\Livewire\Notifications;
+use App\Livewire\Profile;
+use App\Livewire\Requester\Dashboard;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-use App\Livewire\ChangeRequests\AssessRisk;
-use App\Livewire\ChangeRequests\UploadEvidence;
+
+// Modifikasi rute root (/) agar otomatis mengarahkan user sesuai perannya
+if (app()->environment('local')) {
+    Route::get('/__preview/{email}', function (string $email) {
+        Auth::login(User::where('email', $email)->firstOrFail());
+
+        return redirect()->route('change-requests.index');
+    });
+}
 
 Route::get('/', function () {
+    if (Auth::check()) {
+        /** @var User $user */
+        $user = Auth::user();
+
+        // Staf (Admin, Change Manager, Super Admin) diarahkan ke daftar RFC,
+        // selain itu (Pemohon) diarahkan ke dashboard pemohon.
+        if (! $user->isStaff()) {
+            return redirect()->route('requester.dashboard');
+        }
+    }
+
     return redirect()->route('change-requests.index');
 });
 
-// Route khusus tamu (belum terotentikasi)
-Route::middleware(['guest'])->group(function () {
+Route::middleware('guest')->group(function () {
     Route::get('/login', Login::class)->name('login');
 });
 
-// Group route yang membutuhkan otentikasi login
-Route::middleware(['auth'])->group(function () {
+Route::middleware('auth')->group(function () {
     Route::post('/logout', function () {
         Auth::logout();
         session()->invalidate();
@@ -29,10 +54,39 @@ Route::middleware(['auth'])->group(function () {
         return redirect()->route('login');
     })->name('logout');
 
-    Route::get('/change-requests', ListChangeRequests::class)->name('change-requests.index');
-    Route::get('/change-requests/create', CreateChangeRequest::class)->name('change-requests.create');
-    Route::get('/change-requests/{rfc}', ReviewCompleteness::class)->name('change-requests.show');
-    Route::get('/change-requests/{rfc}/decision', RecordDecision::class)->name('change-requests.decision');
-    Route::get('/change-requests/{rfc}/assess-risk', AssessRisk::class)->name('change-requests.assess-risk');
-    Route::get('/change-requests/{rfc}/evidence', UploadEvidence::class)->name('change-requests.evidence');
+    // Rute Dasbor Pemohon (Dikeluarkan dari prefix agar URL lebih bersih)
+    Route::get('/requester/dashboard', Dashboard::class)->name('requester.dashboard');
+
+    // Notifikasi & profil pengguna
+    Route::get('/notifications', Notifications::class)->name('notifications.index');
+    Route::get('/profile', Profile::class)->name('profile.show');
+
+    Route::prefix('change-requests')->name('change-requests.')->group(function () {
+        Route::get('/', ListChangeRequests::class)->name('index');
+        Route::get('/create', CreateChangeRequest::class)
+            ->middleware('can:rfc.create')
+            ->name('create');
+        Route::get('/{rfc}', ShowChangeRequest::class)->name('show'); // <-- SEKARANG MENGARAH KE KOMPONEN BARU
+
+        // Rute Verifikasi Admin
+        Route::get('/{rfc}/review', ReviewCompleteness::class)
+            ->middleware('can:rfc.review_completeness')
+            ->name('review');
+
+        // Rute Evaluasi & Otorisasi Change Manager
+        Route::get('/{rfc}/assess-risk', AssessRisk::class)
+            ->middleware('can:rfc.assess_risk')
+            ->name('assess-risk');
+
+        Route::get('/{rfc}/record-decision', RecordDecision::class)
+            ->middleware('can:rfc.record_decision')
+            ->name('record-decision');
+
+        // Rute Eksekusi Rilis & Penutupan
+        Route::get('/{rfc}/implement', ImplementChange::class)->name('implement');
+        Route::get('/{rfc}/upload-evidence', UploadEvidence::class)->name('upload-evidence');
+        Route::get('/{rfc}/close', CloseRfc::class)
+            ->middleware('can:rfc.close')
+            ->name('close');
+    });
 });

@@ -3,11 +3,13 @@
 namespace App\Livewire\ChangeRequests;
 
 use App\Enums\RfcStatus;
+use App\Exceptions\InvalidRfcStatusTransitionException;
 use App\Models\ChangeRequest;
 use App\Models\User;
 use App\StateMachines\RfcStatusTransition;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -15,6 +17,7 @@ use Livewire\Component;
 class CloseRfc extends Component
 {
     public ChangeRequest $rfc;
+
     public string $closure_notes = '';
 
     protected array $rules = [
@@ -34,7 +37,7 @@ class CloseRfc extends Component
 
         if (! $user || ! $user->can('rfc.close')) {
             // Bypass otorisasi penutupan tiket jika akun Super Admin
-            if (! $user->hasRole('Super Admin')) {
+            if (! $user?->hasRole('Super Admin')) {
                 abort(403, 'Anda tidak memiliki otorisasi untuk menutup tiket RFC ini.');
             }
         }
@@ -49,14 +52,16 @@ class CloseRfc extends Component
         /** @var User $user */
         $user = Auth::user();
 
-        $this->rfc->update([
-            'closure_notes' => $this->closure_notes,
-            'closed_at' => now(),
-            'closed_by_id' => $user->id,
-        ]);
+        try {
+            DB::transaction(function () use ($user) {
+                RfcStatusTransition::transitionTo($this->rfc, RfcStatus::CLOSED, $user, $this->closure_notes);
+                $this->rfc->update(['closed_at' => now()]);
+            });
+        } catch (InvalidRfcStatusTransitionException $exception) {
+            $this->addError('status', $exception->getMessage());
 
-        // Transisi status RFC dari Successful / RolledBack ke Closed
-        RfcStatusTransition::transitionTo($this->rfc, RfcStatus::Closed, $user);
+            return;
+        }
 
         session()->flash('message', "Tiket RFC {$this->rfc->rfc_number} resmi ditutup (Closed).");
         $this->redirect(route('change-requests.show', $this->rfc->id), navigate: true);

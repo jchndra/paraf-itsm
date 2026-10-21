@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\RfcStatus;
 use App\Models\Application;
 use App\Models\Authority;
 use App\Models\ChangeRequest;
@@ -134,7 +135,7 @@ class DatabaseSeeder extends Seeder
             'is_physical_letter' => false,
             'reason_for_change' => 'Peningkatan performa dan optimasi basis data pada sistem contoh.',
             'impact_description' => 'Layanan mengalami jeda pemrosesan selama 15 menit saat pembaruan.',
-            'status' => 'submitted',
+            'status' => RfcStatus::SUBMITTED->value,
             'target_implementation_date' => '2026-10-24 22:00:00',
         ]);
 
@@ -148,7 +149,7 @@ class DatabaseSeeder extends Seeder
             'physical_letter_number' => '500/001/SAMPLE/2026',
             'reason_for_change' => 'Penyesuaian kebutuhan format dokumen laporan internal.',
             'impact_description' => 'Tidak ada dampak pemadaman sistem.',
-            'status' => 'draft',
+            'status' => RfcStatus::DRAFT->value,
             'target_implementation_date' => '2026-10-28 20:00:00',
         ]);
     }

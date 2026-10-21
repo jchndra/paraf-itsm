@@ -73,6 +73,17 @@ class Login extends Component
             ->withProperties(['ip' => request()->ip()])
             ->log('Login berhasil');
 
+        // --- GANTI BARIS TERAKHIR DENGAN KODE DI BAWAH INI ---
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // Pemohon diarahkan ke dasbor pemohon, staf ke daftar RFC.
+        if (! $user->isStaff()) {
+            $this->redirectIntended(default: route('requester.dashboard', absolute: false), navigate: true);
+            return;
+        }
+
         $this->redirectIntended(default: route('change-requests.index', absolute: false), navigate: true);
     }
 

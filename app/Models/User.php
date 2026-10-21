@@ -38,6 +38,14 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Staf adalah pengguna yang boleh melihat seluruh RFC (Admin, Change Manager, Super Admin).
+     */
+    public function isStaff(): bool
+    {
+        return $this->can('rfc.view_all');
+    }
+
     public function opd(): BelongsTo
     {
         return $this->belongsTo(Opd::class);

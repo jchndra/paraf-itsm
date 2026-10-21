@@ -2,6 +2,7 @@
 
 use App\Livewire\Auth\Login;
 use App\Models\User;
+use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -30,9 +31,29 @@ test('pengguna dapat berhasil login dengan kredensial valid', function () {
         ->set('password', 'secret123')
         ->call('login')
         ->assertHasNoErrors()
-        ->assertRedirect('/change-requests');
+        ->assertRedirect('/requester/dashboard');
 
     $this->assertAuthenticatedAs($user);
+});
+
+test('admin diarahkan ke daftar RFC setelah login', function () {
+    $this->seed(PermissionSeeder::class);
+
+    $admin = User::factory()->create([
+        'email' => 'admin@paraf.local',
+        'password' => bcrypt('secret123'),
+        'is_active' => true,
+    ]);
+    $admin->assignRole('Admin');
+
+    Livewire::test(Login::class)
+        ->set('email', 'admin@paraf.local')
+        ->set('password', 'secret123')
+        ->call('login')
+        ->assertHasNoErrors()
+        ->assertRedirect('/change-requests');
+
+    $this->assertAuthenticatedAs($admin);
 });
 
 test('gagal login dengan kata sandi salah', function () {

@@ -2,9 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Enums\RfcStatus;
 use App\Models\ChangeRequest;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class RfcStatusChangedNotification extends Notification
@@ -13,28 +13,13 @@ class RfcStatusChangedNotification extends Notification
 
     public function __construct(
         public ChangeRequest $rfc,
-        public string $previousStatus,
-        public string $newStatus,
+        public RfcStatus $newStatus,
         public ?string $note = null
     ) {}
 
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
-    }
-
-    public function toMail(object $notifiable): MailMessage
-    {
-        $mail = (new MailMessage)
-            ->subject("[PARAF] Pembaruan Status RFC: {$this->rfc->rfc_number}")
-            ->greeting("Halo, {$notifiable->name}")
-            ->line("Status untuk permohonan perubahan **{$this->rfc->rfc_number}** ({$this->rfc->title}) telah diperbarui dari **{$this->previousStatus}** menjadi **{$this->newStatus}**.");
-
-        if ($this->note) {
-            $mail->line("**Catatan Tambahan:** {$this->note}");
-        }
-
-        return $mail->action('Lihat Detail RFC', url("/change-requests/{$this->rfc->id}"));
+        return ['database'];
     }
 
     public function toArray(object $notifiable): array
@@ -43,10 +28,32 @@ class RfcStatusChangedNotification extends Notification
             'rfc_id' => $this->rfc->id,
             'rfc_number' => $this->rfc->rfc_number,
             'title' => $this->rfc->title,
-            'previous_status' => $this->previousStatus,
-            'new_status' => $this->newStatus,
-            'note' => $this->note,
+            'status' => $this->newStatus->value,
+            'message' => $this->message(),
         ];
     }
+
+    private function message(): string
+    {
+        $number = $this->rfc->rfc_number;
+
+        return match ($this->newStatus) {
+            RfcStatus::SUBMITTED => "RFC {$number} telah diajukan.",
+            RfcStatus::NEEDS_REVISION => $this->withNote("RFC {$number} perlu revisi"),
+            RfcStatus::TICKET_CREATED, RfcStatus::RETURNED_TO_ADMIN => "RFC {$number} sedang ditinjau.",
+            RfcStatus::APPROVED => "RFC {$number} telah disetujui.",
+            RfcStatus::REJECTED => "RFC {$number} ditolak.",
+            RfcStatus::IN_PROGRESS => "RFC {$number} sedang dikerjakan.",
+            RfcStatus::IMPLEMENTED, RfcStatus::CLOSED => "RFC {$number} telah selesai.",
+            RfcStatus::FAILED => "RFC {$number} gagal dilaksanakan.",
+            RfcStatus::DRAFT, RfcStatus::CANCELLED => "RFC {$number} diperbarui.",
+        };
+    }
+
+    private function withNote(string $message): string
+    {
+        $note = $this->note ?? $this->rfc->rejection_note;
+
+        return $note ? "{$message}: {$note}" : "{$message}.";
+    }
 }
-    

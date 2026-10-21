@@ -3,8 +3,9 @@
 namespace App\Livewire\ChangeRequests;
 
 use App\Enums\RfcStatus;
+use App\Exceptions\InvalidRfcStatusTransitionException;
 use App\Models\ChangeRequest;
-use App\Models\ImplementationEvidence;
+use App\Models\Evidence;
 use App\Models\User;
 use App\StateMachines\RfcStatusTransition;
 use Illuminate\Contracts\View\View;
@@ -29,7 +30,6 @@ class ImplementChange extends Component
     public string $testing_notes = '';
     public string $rollback_notes = '';
 
-    // Bukti Implementasi / Testing
     /** @var mixed */
     public $evidence_file;
     public string $evidence_description = '';
@@ -75,7 +75,7 @@ class ImplementChange extends Component
         /** @var User|null $user */
         $user = Auth::user();
 
-        if (! $user || ! $user->can('rfc.implement')) {
+        if (! $user || ! $user->can('rfc.assign_release')) {
             abort(403, 'Anda tidak memiliki otorisasi untuk mencatat hasil implementasi RFC.');
         }
 
@@ -88,6 +88,14 @@ class ImplementChange extends Component
     {
         $this->validate();
 
+        $currentStatus = RfcStatus::fromValue($this->rfc->status);
+
+        if (! in_array($currentStatus, [RfcStatus::APPROVED, RfcStatus::IN_PROGRESS], true)) {
+            $this->addError('status', 'Implementasi hanya dapat dicatat untuk RFC yang sudah disetujui atau sedang dikerjakan.');
+
+            return;
+        }
+
         /** @var User $user */
         $user = Auth::user();
 
@@ -96,37 +104,38 @@ class ImplementChange extends Component
 
         try {
             DB::transaction(function () use ($user, $path, $checksum) {
-                // Simpan Bukti Implementasi ke Database
-                ImplementationEvidence::create([
+                Evidence::create([
                     'change_request_id' => $this->rfc->id,
                     'uploaded_by_id' => $user->id,
-                    'title' => $this->evidence_description,
+                    'evidence_type' => 'test_results',
                     'file_path' => $path,
                     'original_filename' => $this->evidence_file->getClientOriginalName(),
                     'mime_type' => $this->evidence_file->getMimeType(),
                     'file_size' => $this->evidence_file->getSize(),
                     'checksum_sha256' => $checksum,
+                    'description' => $this->evidenceDescription(),
                 ]);
 
-                // Update data waktu & catatan di RFC
-                $this->rfc->update([
-                    'actual_start_time' => $this->actual_start_time,
-                    'actual_end_time' => $this->actual_end_time,
-                    'implementation_notes' => $this->implementation_notes,
-                    'testing_notes' => $this->testing_notes,
-                    'rollback_notes' => $this->execution_result === 'failed' ? $this->rollback_notes : null,
-                ]);
-
-                // Transisi Status RFC sesuai Enum Project (Successful / RolledBack)
-                if ($this->execution_result === 'success') {
-                    RfcStatusTransition::transitionTo($this->rfc, RfcStatus::Successful, $user);
-                } else {
-                    RfcStatusTransition::transitionTo($this->rfc, RfcStatus::RolledBack, $user);
+                if (RfcStatus::fromValue($this->rfc->status) === RfcStatus::APPROVED) {
+                    RfcStatusTransition::transitionTo($this->rfc, RfcStatus::IN_PROGRESS, $user);
                 }
+
+                RfcStatusTransition::transitionTo(
+                    $this->rfc,
+                    $this->execution_result === 'success' ? RfcStatus::IMPLEMENTED : RfcStatus::FAILED,
+                    $user,
+                    $this->execution_result === 'failed' ? $this->rollback_notes : null
+                );
             });
-        } catch (\Throwable $e) {
+        } catch (InvalidRfcStatusTransitionException $exception) {
             Storage::disk('public')->delete($path);
-            throw $e;
+            $this->addError('status', $exception->getMessage());
+
+            return;
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete($path);
+
+            throw $exception;
         }
 
         $message = $this->execution_result === 'success'
@@ -135,6 +144,23 @@ class ImplementChange extends Component
 
         session()->flash('message', $message);
         $this->redirect(route('change-requests.show', $this->rfc->id), navigate: true);
+    }
+
+    private function evidenceDescription(): string
+    {
+        $parts = [
+            $this->evidence_description,
+            'Mulai: '.$this->actual_start_time,
+            'Selesai: '.$this->actual_end_time,
+            $this->implementation_notes,
+            $this->testing_notes,
+        ];
+
+        if ($this->execution_result === 'failed') {
+            $parts[] = 'Rollback: '.$this->rollback_notes;
+        }
+
+        return implode("\n\n", array_filter($parts));
     }
 
     public function render(): View

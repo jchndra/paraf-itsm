@@ -2,11 +2,9 @@
 
 namespace App\Livewire\ChangeRequests;
 
-use App\Enums\RfcStatus;
 use App\Models\ChangeRequest;
 use App\Models\Evidence;
 use App\Models\User;
-use App\StateMachines\RfcStatusTransition;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +46,7 @@ class UploadEvidence extends Component
         /** @var User|null $user */
         $user = Auth::user();
 
-        if (! $user) {
+        if (! $user || ! $user->can('rfc.assign_release')) {
             abort(403, 'Anda tidak memiliki akses untuk mengunggah bukti.');
         }
 
@@ -78,12 +76,6 @@ class UploadEvidence extends Component
                     'file_size' => $this->file->getSize(),
                     'checksum_sha256' => $checksum,
                 ]);
-
-                // Transisi otomatis status ke Successful jika status saat ini Approved/Executing
-                $statusVal = is_object($this->rfc->status) ? $this->rfc->status->value : $this->rfc->status;
-                if (in_array($statusVal, ['approved', 'executing'])) {
-                    RfcStatusTransition::transitionTo($this->rfc, RfcStatus::Successful, $user);
-                }
             });
         } catch (\Throwable $e) {
             Storage::disk('public')->delete($path);

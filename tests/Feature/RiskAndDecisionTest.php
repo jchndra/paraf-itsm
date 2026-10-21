@@ -1,13 +1,14 @@
 <?php
 
+use App\Enums\DecisionStatus;
 use App\Enums\RfcStatus;
+use App\Livewire\ChangeRequests\AssessRisk;
+use App\Livewire\ChangeRequests\RecordDecision;
 use App\Models\Authority;
 use App\Models\ChangeRequest;
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -16,7 +17,7 @@ beforeEach(function () {
     $this->seed(PermissionSeeder::class);
 });
 
-test('change manager dapat mengisi analisis risiko dan mengubah status menjadi assessed', function () {
+test('change manager dapat mengisi analisis risiko tanpa mengubah status ticket created', function () {
     $cm = User::factory()->create();
     $cm->assignRole('Change Manager');
 
@@ -24,28 +25,47 @@ test('change manager dapat mengisi analisis risiko dan mengubah status menjadi a
 
     $rfc = ChangeRequest::factory()->create([
         'submitted_by_id' => $pemohon->id,
-        'status' => RfcStatus::Complete->value,
+        'status' => RfcStatus::TICKET_CREATED->value,
     ]);
 
     $this->actingAs($cm);
 
-    Livewire::test(\App\Livewire\ChangeRequests\AssessRisk::class, ['rfc' => $rfc])
-        ->set('impact_level', 'medium')
-        ->set('probability_level', 'medium')
-        ->set('overall_risk_level', 'medium')
-        ->set('mitigation_plan', 'Rencana mitigasi penggantian server cadangan.')
-        ->set('rollback_plan', 'Rencana rollback mengembalikan snapshot VM.')
-        ->set('testing_plan', 'Rencana pengujian menyeluruh pada lingkungan staging.')
-        ->call('saveAssessment')
+    Livewire::test(AssessRisk::class, ['rfc' => $rfc])
+        ->set('risk_level', 'Sedang')
+        ->set('impact_level', 'Sedang')
+        ->set('urgency_level', 'Normal')
+        ->set('classification', 'Normal Change')
+        ->set('analysis_notes', 'Rencana mitigasi penggantian server cadangan dan pengujian pada staging.')
+        ->call('submitAssessment')
         ->assertHasNoErrors();
 
-    expect($rfc->fresh()->status)->toBe(RfcStatus::Assessed->value);
+    expect($rfc->fresh()->status)->toBe(RfcStatus::TICKET_CREATED->value);
     expect($rfc->fresh()->riskAssessment)->not->toBeNull();
 });
 
-test('keputusan otorisasi menghasilkan dokumen dengan checksum sha256', function () {
-    Storage::fake('public');
+test('keputusan otorisasi ditolak jika analisis risiko belum ada', function () {
+    $cm = User::factory()->create();
+    $cm->assignRole('Change Manager');
 
+    $authority = Authority::factory()->create();
+
+    $rfc = ChangeRequest::factory()->create([
+        'status' => RfcStatus::TICKET_CREATED->value,
+    ]);
+
+    $this->actingAs($cm);
+
+    Livewire::test(RecordDecision::class, ['rfc' => $rfc])
+        ->set('authorityId', $authority->id)
+        ->set('decisionStatus', DecisionStatus::APPROVED->value)
+        ->set('notes', 'Disetujui berdasarkan hasil evaluasi teknis.')
+        ->call('saveDecision')
+        ->assertHasErrors(['decisionStatus']);
+
+    expect($rfc->fresh()->status)->toBe(RfcStatus::TICKET_CREATED->value);
+});
+
+test('keputusan otorisasi tercatat beserta snapshot pejabat', function () {
     $cm = User::factory()->create();
     $cm->assignRole('Change Manager');
 
@@ -54,7 +74,7 @@ test('keputusan otorisasi menghasilkan dokumen dengan checksum sha256', function
 
     $rfc = ChangeRequest::factory()->create([
         'submitted_by_id' => $pemohon->id,
-        'status' => RfcStatus::Assessed->value,
+        'status' => RfcStatus::TICKET_CREATED->value,
     ]);
 
     $rfc->riskAssessment()->create([
@@ -68,30 +88,54 @@ test('keputusan otorisasi menghasilkan dokumen dengan checksum sha256', function
         'rollback_plan' => 'Rollback contoh',
     ]);
 
-    $isi = '%PDF-1.4 isi dokumen otorisasi contoh';
-    $file = UploadedFile::fake()->createWithContent('sk_otorisasi.pdf', $isi);
-    expect(file_get_contents($file->getRealPath()))->toBe($isi);
-
     $this->actingAs($cm);
 
-    Livewire::test(\App\Livewire\ChangeRequests\RecordDecision::class, ['rfc' => $rfc])
+    Livewire::test(RecordDecision::class, ['rfc' => $rfc])
         ->set('authorityId', $authority->id)
-        ->set('decisionStatus', 'approved')
-        ->set('documentType', 'cab_minutes')
+        ->set('decisionStatus', DecisionStatus::APPROVED->value)
         ->set('notes', 'Disetujui berdasarkan hasil evaluasi teknis.')
-        ->set('documentNumber', '500/SK-CAB/2026')
-        ->set('documentFile', $file)
         ->call('saveDecision')
         ->assertHasNoErrors();
 
-    expect($rfc->fresh()->status)->toBe(RfcStatus::Approved->value);
-
-    $doc = $rfc->fresh()->authorizationDocuments()->first();
-    expect($doc)->not->toBeNull();
-    expect($doc->checksum_sha256)->toBe(hash('sha256', $isi));
+    expect($rfc->fresh()->status)->toBe(RfcStatus::APPROVED->value);
 
     $decision = $rfc->fresh()->decisions()->first();
+    expect($decision)->not->toBeNull();
     expect($decision->snapshot_authority_name)->toBe($authority->name);
     expect($decision->recorded_by_id)->toBe($cm->id);
-    expect($doc->decision_id)->toBe($decision->id);
+    expect($decision->decision_status)->toBe(DecisionStatus::APPROVED->value);
+});
+
+test('change manager dapat mengembalikan rfc ke admin', function () {
+    $cm = User::factory()->create();
+    $cm->assignRole('Change Manager');
+
+    $authority = Authority::factory()->create();
+
+    $rfc = ChangeRequest::factory()->create([
+        'status' => RfcStatus::TICKET_CREATED->value,
+    ]);
+
+    $rfc->riskAssessment()->create([
+        'assessed_by_id' => $cm->id,
+        'system_criticality_score' => 2,
+        'impact_scope_score' => 2,
+        'rollback_readiness_score' => 2,
+        'total_score' => 6,
+        'risk_level' => 'medium',
+        'mitigation_plan' => 'Mitigasi contoh',
+        'rollback_plan' => 'Rollback contoh',
+    ]);
+
+    $this->actingAs($cm);
+
+    Livewire::test(RecordDecision::class, ['rfc' => $rfc])
+        ->set('authorityId', $authority->id)
+        ->set('decisionStatus', DecisionStatus::RETURNED_TO_ADMIN->value)
+        ->set('notes', 'Perlu pengecekan ulang oleh Admin.')
+        ->call('saveDecision')
+        ->assertHasNoErrors();
+
+    expect($rfc->fresh()->status)->toBe(RfcStatus::RETURNED_TO_ADMIN->value);
+    expect($rfc->fresh()->decisions()->first()->decision_status)->toBe(DecisionStatus::RETURNED_TO_ADMIN->value);
 });

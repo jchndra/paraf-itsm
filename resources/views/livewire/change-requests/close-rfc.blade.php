@@ -6,6 +6,11 @@
         </div>
 
         <form wire:submit="closeTicket" class="p-6 space-y-6">
+            @error('status')
+                <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
+                    {{ $message }}</div>
+            @enderror
+
             <div>
                 <label for="closure_notes" class="block text-sm font-medium text-slate-700 mb-1">
                     Catatan Penutupan & Evaluasi Akhir (PIR) <span class="text-red-500">*</span>
