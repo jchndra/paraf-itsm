@@ -13,6 +13,8 @@
 </head>
 
 <body class="min-h-screen bg-[#f4f7fb] font-sans text-slate-900 antialiased">
+    <x-flash-toast />
+
     @php
         $currentUser = auth()->user();
         $roleName = $currentUser?->getRoleNames()->first() ?? 'Pengguna';
@@ -39,16 +41,10 @@
 
             {{-- Brand --}}
             <div class="flex items-start gap-3 px-5 pb-5 pt-6">
-                <svg viewBox="0 0 48 56" fill="none" class="mt-0.5 h-12 w-11 shrink-0" aria-hidden="true">
-                    <path d="M24 1.5 45 9.2v19.2c0 12.9-8.7 21.4-21 26.1C11.7 49.8 3 41.3 3 28.4V9.2L24 1.5Z"
-                        fill="#f2c94c" stroke="#ffffff" stroke-width="1.5" />
-                    <path d="M24 5 41 11.4v16.8c0 10.8-7 18.2-17 22.4-10-4.2-17-11.6-17-22.4V11.4L24 5Z"
-                        fill="#0b4f9c" />
-                    <path d="M24 12.5l1.8 3.6 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6L24 12.5Z"
-                        fill="#f2c94c" />
-                    <path d="M24 24l1.6 4.4v4h2.9v3.4h-2.9v6.7h-3.2v-6.7h-2.9v-3.4h2.9v-4L24 24Z"
-                        fill="#ffffff" />
-                </svg>
+                <span class="mt-0.5 grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white p-1">
+                    <img src="{{ asset('images/logo-diskominfostandi.png') }}"
+                        alt="Logo Diskominfostandi Kota Bekasi" class="h-full w-full object-contain">
+                </span>
 
                 <div class="min-w-0 leading-tight">
                     <p class="text-[13px] font-semibold text-blue-100/90">Sistem Manajemen</p>
@@ -106,6 +102,16 @@
                         RFC Saya
                     </x-sidebar-link>
                 @endunless
+
+                <x-sidebar-link :href="route('change-requests.deletions.index')" :active="request()->routeIs('change-requests.deletions.*')">
+                    <x-slot:icon>
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+                                d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v5M14 11v5" />
+                        </svg>
+                    </x-slot:icon>
+                    Riwayat Penghapusan
+                </x-sidebar-link>
 
                 <x-sidebar-link :href="route('notifications.index')" :active="request()->routeIs('notifications.*')" :badge="$unreadCount ?: null">
                     <x-slot:icon>

@@ -37,6 +37,23 @@ class ChangeRequestPolicy
         return false;
     }
 
+    public function delete(User $user, ChangeRequest $rfc): bool
+    {
+        if ($rfc->trashed()) {
+            return false;
+        }
+
+        // Pemohon hanya boleh menghapus RFC miliknya sendiri yang masih Draft.
+        return $rfc->submitted_by_id === $user->id
+            && RfcStatus::fromValue($rfc->status) === RfcStatus::DRAFT;
+    }
+
+    public function restore(User $user, ChangeRequest $rfc): bool
+    {
+        // Pemulihan adalah kewenangan staf yang boleh melihat seluruh RFC.
+        return $rfc->trashed() && $user->hasPermissionTo('rfc.view_all');
+    }
+
     public function reviewCompleteness(User $user): bool
     {
         return $user->hasPermissionTo('rfc.review_completeness');

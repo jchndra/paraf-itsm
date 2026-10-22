@@ -4,11 +4,13 @@ use App\Livewire\Auth\Login;
 use App\Livewire\ChangeRequests\AssessRisk;
 use App\Livewire\ChangeRequests\CloseRfc;
 use App\Livewire\ChangeRequests\CreateChangeRequest;
+use App\Livewire\ChangeRequests\DeletionHistory;
 use App\Livewire\ChangeRequests\ImplementChange;
 use App\Livewire\ChangeRequests\ListChangeRequests;
 use App\Livewire\ChangeRequests\RecordDecision;
 use App\Livewire\ChangeRequests\ReviewCompleteness;
 use App\Livewire\ChangeRequests\ShowChangeRequest;
+use App\Livewire\ChangeRequests\ShowDeletedChangeRequest;
 use App\Livewire\ChangeRequests\UploadEvidence;
 use App\Livewire\Notifications;
 use App\Livewire\Profile;
@@ -66,6 +68,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/create', CreateChangeRequest::class)
             ->middleware('can:rfc.create')
             ->name('create');
+        Route::get('/deletion-history', DeletionHistory::class)->name('deletions.index');
+        Route::get('/deletion-history/{rfc}', ShowDeletedChangeRequest::class)
+            ->withTrashed()
+            ->name('deletions.show');
         Route::get('/{rfc}', ShowChangeRequest::class)->name('show'); // <-- SEKARANG MENGARAH KE KOMPONEN BARU
 
         // Rute Verifikasi Admin

@@ -1,5 +1,9 @@
 <div class="space-y-6">
 
+    @php
+        $isStaff = auth()->user()?->can('rfc.view_all') ?? false;
+    @endphp
+
     <!-- Header & Tombol Kembali -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -32,55 +36,117 @@
                 <h3 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Informasi Permintaan Perubahan</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-sm">
                     <div>
-                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Tujuan
-                            Perubahan</span>
-                        <p class="text-slate-800 font-medium">{{ $rfc->purpose ?? '-' }}</p>
+                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Judul</span>
+                        <p class="text-slate-800 font-medium">{{ $rfc->title }}</p>
                     </div>
                     <div>
-                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Tanggal
-                            Diajukan</span>
-                        <p class="text-slate-800 font-medium">{{ $rfc->created_at->format('d M Y, H:i') }}</p>
+                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Sistem / Aplikasi Target</span>
+                        <p class="text-slate-800 font-medium">{{ $rfc->application?->name }}</p>
                     </div>
                     <div>
-                        <span
-                            class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Kategori</span>
-                        <p class="text-slate-800 font-medium">{{ $rfc->category ?? '-' }}</p>
+                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Target Tanggal Pelaksanaan</span>
+                        <p class="text-slate-800 font-medium">
+                            {{ $rfc->target_implementation_date?->copy()->locale('id')->translatedFormat('d M Y') }}
+                        </p>
                     </div>
                     <div>
-                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Jenis
-                            Perubahan</span>
-                        <p class="text-slate-800 font-medium">{{ $rfc->change_type ?? '-' }}</p>
+                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Tanggal Diajukan</span>
+                        <p class="text-slate-800 font-medium">
+                            {{ $rfc->created_at?->copy()->locale('id')->translatedFormat('d M Y, H:i') }}
+                        </p>
+                    </div>
+                    <div>
+                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Nota Dinas</span>
+                        @if ($rfc->is_physical_letter)
+                            <p class="text-slate-800 font-medium">
+                                Ya
+                                @if (filled($rfc->physical_letter_number))
+                                    <span class="block text-slate-600">{{ $rfc->physical_letter_number }}</span>
+                                @endif
+                            </p>
+                        @else
+                            <p class="text-slate-800 font-medium">Tidak</p>
+                        @endif
+                    </div>
+                    @if ($isStaff)
+                        <div>
+                            <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Nama Pemohon</span>
+                            <p class="text-slate-800 font-medium">{{ $rfc->submittedBy?->name }}</p>
+                        </div>
+                        @if ($rfc->submittedBy?->opd)
+                            <div>
+                                <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Unit Kerja</span>
+                                <p class="text-slate-800 font-medium">{{ $rfc->submittedBy->opd->name }}</p>
+                            </div>
+                        @endif
+                    @endif
+                    <div class="md:col-span-2">
+                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Alasan Perubahan</span>
+                        <p class="text-slate-800 whitespace-pre-wrap">{{ $rfc->reason_for_change }}</p>
                     </div>
                     <div class="md:col-span-2">
-                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Deskripsi
-                            Lengkap</span>
-                        <div class="p-3 bg-slate-50 rounded-lg text-slate-700 whitespace-pre-wrap">
-                            {{ $rfc->description ?? 'Tidak ada deskripsi yang dilampirkan.' }}</div>
+                        <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Estimasi Dampak</span>
+                        <p class="text-slate-800 whitespace-pre-wrap">{{ $rfc->impact_description }}</p>
                     </div>
-
-                    <!-- Render Lampiran jika ada relasinya -->
-                    @if (isset($rfc->attachments) && $rfc->attachments->isNotEmpty())
-                        <div class="md:col-span-2 mt-2">
-                            <span
-                                class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-2">Dokumen
-                                Lampiran</span>
-                            <ul class="space-y-2">
-                                @foreach ($rfc->attachments as $attachment)
-                                    <li class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13">
-                                            </path>
-                                        </svg>
-                                        <a href="{{ Storage::url($attachment->file_path) }}" target="_blank"
-                                            class="underline">{{ $attachment->file_name }}</a>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        </div>
-                    @endif
                 </div>
             </div>
+
+            <!-- Ditetapkan Petugas -->
+            @php
+                $officerCategory = $rfc->category ?? null;
+                $officerPriority = $rfc->priority ?? null;
+                $officerChangeType = $rfc->change_type ?: $rfc->riskAssessment?->classification;
+            @endphp
+            @if (filled($officerCategory) || filled($officerPriority) || filled($officerChangeType))
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Ditetapkan Petugas</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-sm">
+                        @if (filled($officerCategory))
+                            <div>
+                                <span
+                                    class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Kategori</span>
+                                <p class="text-slate-800 font-medium">{{ $officerCategory }}</p>
+                            </div>
+                        @endif
+                        @if (filled($officerPriority))
+                            <div>
+                                <span
+                                    class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Prioritas</span>
+                                <p class="text-slate-800 font-medium">{{ $officerPriority }}</p>
+                            </div>
+                        @endif
+                        @if (filled($officerChangeType))
+                            <div>
+                                <span class="block text-slate-500 text-xs uppercase tracking-wider font-semibold mb-1">Jenis Perubahan</span>
+                                <p class="text-slate-800 font-medium">{{ $officerChangeType }}</p>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            @endif
+
+            <!-- Alasan Penolakan / Permintaan Revisi -->
+            @php
+                $isRejected = $status === \App\Enums\RfcStatus::REJECTED;
+                $needsRevision = $status === \App\Enums\RfcStatus::NEEDS_REVISION;
+                $finalRejection = $rfc->decisions
+                    ->where('decision_status', \App\Enums\DecisionStatus::REJECTED->value)
+                    ->last();
+                $rejectionReason = $isRejected ? ($rfc->rejection_note ?: $finalRejection?->reason) : null;
+                $revisionReason = $needsRevision ? $rfc->rejection_note : null;
+            @endphp
+            @if (filled($rejectionReason))
+                <div class="bg-rose-50 rounded-xl border border-rose-100 p-6">
+                    <h3 class="text-lg font-bold text-rose-800 mb-2">Alasan Penolakan</h3>
+                    <p class="text-sm text-rose-900 whitespace-pre-wrap">{{ $rejectionReason }}</p>
+                </div>
+            @endif
+            @if (filled($revisionReason))
+                <div class="bg-amber-50 rounded-xl border border-amber-100 p-6">
+                    <h3 class="text-lg font-bold text-amber-800 mb-2">Alasan Permintaan Revisi</h3>
+                    <p class="text-sm text-amber-900 whitespace-pre-wrap">{{ $revisionReason }}</p>
+                </div>
+            @endif
 
             <!-- Panel Keputusan -->
             @if ($rfc->riskAssessment || $rfc->decisions->isNotEmpty())
@@ -129,7 +195,12 @@
                                         </span>
                                     </div>
                                     <p class="text-sm text-slate-700 mt-2"><span
-                                            class="font-semibold">Catatan/Alasan:</span> {{ $decision->reason ?? '-' }}
+                                            class="font-semibold">Catatan/Alasan:</span>
+                                        @if (!$isStaff && $decision->decision_status === \App\Enums\DecisionStatus::RETURNED_TO_ADMIN->value)
+                                            <span class="italic text-slate-500">Catatan internal tidak ditampilkan.</span>
+                                        @else
+                                            {{ $decision->reason ?? '-' }}
+                                        @endif
                                     </p>
                                 </div>
                             @endforeach

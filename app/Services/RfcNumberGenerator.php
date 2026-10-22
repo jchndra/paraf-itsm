@@ -12,8 +12,9 @@ class RfcNumberGenerator
         $year = date('Y');
         $prefix = "RFC-{$year}-";
 
-        return DB::transaction(function () use ($prefix, $year) {
-            $latestRfc = ChangeRequest::where('rfc_number', 'LIKE', "{$prefix}%")
+        return DB::transaction(function () use ($prefix) {
+            $latestRfc = ChangeRequest::withTrashed()
+                ->where('rfc_number', 'LIKE', "{$prefix}%")
                 ->orderBy('id', 'desc')
                 ->lockForUpdate()
                 ->first();

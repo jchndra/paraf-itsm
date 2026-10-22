@@ -36,6 +36,25 @@
     </div>
 
     {{-- STATS CARDS --}}
+    @if ($statusMessage)
+        <div class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-800"
+            role="status">
+            <svg class="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="flex-1 font-medium">{{ $statusMessage }}</p>
+            <button type="button" wire:click="$set('statusMessage', '')" class="text-emerald-500 hover:text-emerald-700"
+                aria-label="Tutup notifikasi">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    @endif
+
     @if ($roleView === 'pemohon')
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -105,6 +124,17 @@
 
     {{-- TABEL KONTEN UTAMA --}}
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        @php
+            $activeFilterCount = collect([
+                $statusFilter,
+                $categoryFilter,
+                $applicationFilter,
+                $opdFilter,
+                $dateFrom,
+                $dateTo,
+            ])->filter(fn ($value) => filled($value))->count();
+        @endphp
+
         <div class="p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
                 <h3 class="text-base font-bold text-slate-800">Daftar Permintaan Perubahan (RFC)</h3>
@@ -114,11 +144,94 @@
             <div class="flex items-center gap-3">
                 <input wire:model.live.debounce.300ms="search" type="text" placeholder="Cari No. RFC / Judul..."
                     class="px-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none w-48 md:w-64">
+                @if ($activeFilterCount > 0)
+                    <span class="hidden rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-700 sm:inline">
+                        {{ $activeFilterCount }} filter aktif
+                    </span>
+                @endif
+            </div>
+        </div>
+
+        {{-- Panel filter lanjutan --}}
+        <div class="grid grid-cols-1 gap-3 border-b border-slate-100 bg-slate-50/60 px-5 py-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div>
+                <label for="filter-status" class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Status</label>
+                <select id="filter-status" wire:model.live="statusFilter"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100">
+                    <option value="">Semua status</option>
+                    @foreach ($statuses as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div>
+                <label for="filter-change-type" class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Jenis Perubahan</label>
+                <select id="filter-change-type" wire:model.live="categoryFilter"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100">
+                    <option value="">Semua jenis</option>
+                    @foreach ($changeTypes as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div>
+                <label for="filter-application" class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Aplikasi</label>
+                <select id="filter-application" wire:model.live="applicationFilter"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100">
+                    <option value="">Semua aplikasi</option>
+                    @foreach ($applications as $application)
+                        <option value="{{ $application->id }}">{{ $application->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            @if ($roleView !== 'pemohon')
+                <div>
+                    <label for="filter-opd" class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Unit Kerja Pemohon</label>
+                    <select id="filter-opd" wire:model.live="opdFilter"
+                        class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100">
+                        <option value="">Semua unit</option>
+                        @foreach ($opds as $opd)
+                            <option value="{{ $opd->id }}">{{ $opd->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+
+            <div>
+                <label for="filter-date-from" class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Dari Tanggal</label>
+                <input id="filter-date-from" type="date" wire:model.live="dateFrom"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100">
+            </div>
+
+            <div>
+                <label for="filter-date-to" class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Sampai Tanggal</label>
+                <input id="filter-date-to" type="date" wire:model.live="dateTo"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100">
+            </div>
+
+            <div class="flex items-end sm:col-span-2 lg:col-span-3 xl:col-span-6">
+                <button type="button" wire:click="resetFilters"
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-700">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v6h6M20 20v-6h-6M20 9A8 8 0 0 0 5.3 5.3L4 10m16 4-1.3 4.7A8 8 0 0 1 4 15" />
+                    </svg>
+                    Reset filter
+                </button>
+                @error('dateFrom')
+                    <span class="ml-3 text-[11px] font-medium text-rose-600">{{ $message }}</span>
+                @enderror
+                @error('dateTo')
+                    <span class="ml-3 text-[11px] font-medium text-rose-600">{{ $message }}</span>
+                @enderror
             </div>
         </div>
 
         <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs text-slate-600">
+            <table class="rfc-responsive-table w-full text-left text-xs text-slate-600">
                 <thead
                     class="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-100">
                     <tr>
@@ -136,26 +249,31 @@
                             $statusVal = \App\Enums\RfcStatus::fromValue($rfc->status);
                         @endphp
                         <tr class="hover:bg-slate-50/80 transition">
-                            <td class="px-5 py-3.5 font-bold text-blue-900">
+                            <td data-label="No. RFC" class="px-5 py-3.5 font-bold text-blue-900">
                                 {{ $rfc->rfc_number }}
                             </td>
-                            <td class="px-5 py-3.5 font-medium text-slate-800">
+                            <td data-label="Judul Perubahan" class="px-5 py-3.5 font-medium text-slate-800">
                                 {{ $rfc->title }}
                             </td>
-                            <td class="px-5 py-3.5 text-slate-600">
+                            <td data-label="Pemohon" class="px-5 py-3.5 text-slate-600">
                                 {{ $rfc->submittedBy?->name ?? '-' }}
                             </td>
-                            <td class="px-5 py-3.5 text-slate-500">
+                            <td data-label="Tanggal" class="px-5 py-3.5 text-slate-500">
                                 {{ $rfc->created_at?->format('d M Y') }}
                             </td>
-                            <td class="px-5 py-3.5">
+                            <td data-label="Status" class="px-5 py-3.5">
                                 <x-status-badge :status="$statusVal ?? $rfc->status" />
                             </td>
-                            <td class="px-5 py-3.5 text-right space-x-2">
+                            <td data-label="Aksi" class="px-5 py-3.5 text-right space-x-2">
                                 <a href="{{ route('change-requests.show', $rfc) }}"
                                     class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg text-xs transition">
                                     Detail
                                 </a>
+
+                                @if ($roleView === 'pemohon' && $statusVal === \App\Enums\RfcStatus::DRAFT)
+                                    <livewire:change-requests.delete-rfc :rfc="$rfc" variant="button"
+                                        :key="'delete-rfc-' . $rfc->id" />
+                                @endif
 
                                 {{-- Aksi Admin / Frontdesk --}}
                                 @if ($roleView === 'admin' && in_array($statusVal, [\App\Enums\RfcStatus::SUBMITTED, \App\Enums\RfcStatus::RETURNED_TO_ADMIN], true))
@@ -184,7 +302,7 @@
                     @empty
                         <tr>
                             <td colspan="6" class="px-5 py-8 text-center text-slate-400">
-                                Belum ada dokumen RFC yang tersedia.
+                                Belum ada dokumen RFC yang cocok dengan filter yang dipilih.
                             </td>
                         </tr>
                     @endforelse

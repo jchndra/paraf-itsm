@@ -6,6 +6,25 @@
         <p class="mt-1 text-sm text-slate-500">Pantau dan kelola permintaan perubahan layanan TI Anda.</p>
     </div>
 
+    @if ($statusMessage)
+        <div class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-800"
+            role="status">
+            <svg class="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <p class="flex-1 font-medium">{{ $statusMessage }}</p>
+            <button type="button" wire:click="$set('statusMessage', '')" class="text-emerald-500 hover:text-emerald-700"
+                aria-label="Tutup notifikasi">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    @endif
+
     {{-- Banner ajakan mengajukan RFC --}}
     <section
         class="relative overflow-hidden rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50 via-blue-50 to-sky-100 shadow-sm">
@@ -263,7 +282,7 @@
             </div>
 
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[640px] text-left">
+                <table class="rfc-responsive-table w-full min-w-[640px] text-left">
                     <thead class="border-b border-slate-100 bg-slate-50/70">
                         <tr class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                             <th class="px-5 py-3.5">No. RFC</th>
@@ -276,20 +295,20 @@
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($recentRfcs as $rfc)
                             <tr class="align-middle transition hover:bg-slate-50/60">
-                                <td class="whitespace-nowrap px-5 py-4 text-[13px] font-bold text-blue-700">
+                                <td data-label="No. RFC" class="whitespace-nowrap px-5 py-4 text-[13px] font-bold text-blue-700">
                                     {{ $rfc->rfc_number ?? 'Draft' }}
                                 </td>
-                                <td class="max-w-[260px] px-5 py-4 text-[13px] font-medium leading-snug text-slate-700">
+                                <td data-label="Judul Perubahan" class="max-w-[260px] px-5 py-4 text-[13px] font-medium leading-snug text-slate-700">
                                     {{ $rfc->title }}
                                 </td>
-                                <td class="whitespace-nowrap px-5 py-4 text-[12px] leading-tight text-slate-500">
+                                <td data-label="Tanggal" class="whitespace-nowrap px-5 py-4 text-[12px] leading-tight text-slate-500">
                                     {{ $rfc->created_at->format('d M Y') }}<br>
                                     <span class="text-slate-400">{{ $rfc->created_at->format('H:i') }}</span>
                                 </td>
-                                <td class="whitespace-nowrap px-5 py-4">
+                                <td data-label="Status" class="whitespace-nowrap px-5 py-4">
                                     <x-status-badge :status="$rfc->status" />
                                 </td>
-                                <td class="whitespace-nowrap px-5 py-4">
+                                <td data-label="Aksi" class="whitespace-nowrap px-5 py-4">
                                     <div class="flex items-center justify-center gap-1.5">
                                         <a href="{{ route('change-requests.show', $rfc) }}" wire:navigate
                                             class="inline-flex items-center rounded-lg border border-blue-300 bg-white px-3.5 py-2 text-xs font-semibold text-blue-700 transition hover:border-blue-400 hover:bg-blue-50">
@@ -314,6 +333,10 @@
                                                 @if (in_array(\App\Enums\RfcStatus::fromValue($rfc->status), [\App\Enums\RfcStatus::DRAFT, \App\Enums\RfcStatus::NEEDS_REVISION], true))
                                                     <a href="{{ route('change-requests.show', $rfc) }}" wire:navigate
                                                         class="block px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">Edit / Revisi</a>
+                                                @endif
+                                                @if (\App\Enums\RfcStatus::fromValue($rfc->status) === \App\Enums\RfcStatus::DRAFT)
+                                                    <livewire:change-requests.delete-rfc :rfc="$rfc" variant="menu"
+                                                        :key="'delete-rfc-' . $rfc->id" />
                                                 @endif
                                             </div>
                                         </div>

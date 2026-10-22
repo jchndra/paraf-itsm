@@ -16,7 +16,7 @@ class ShowChangeRequest extends Component
 
         // Muat relasi yang dibutuhkan untuk halaman detail
         $this->rfc = $rfc->load([
-            'submittedBy',
+            'submittedBy.opd',
             'application.opd',
             'riskAssessment',
             'decisions.authority'

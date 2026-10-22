@@ -27,7 +27,7 @@
                     Sistem Manajemen Perubahan Layanan TI
                 </p>
                 <h1 class="mt-2 max-w-md text-[28px] font-extrabold leading-[1.1] tracking-tight text-white sm:text-3xl">
-                    Perubahan terkendali,<br>keputusan tercatat.
+                    Perubahan terencana,<br>layanan terjaga.
                 </h1>
             </div>
         </section>
@@ -46,7 +46,7 @@
                     Sistem Manajemen Perubahan Layanan TI
                 </p>
                 <h1 class="mt-4 text-[46px] font-bold leading-[1.08] tracking-tight text-white xl:text-[60px]">
-                    Perubahan terkendali,<br>keputusan tercatat.
+                    Perubahan terencana,<br>layanan terjaga.
                 </h1>
             </div>
         </aside>

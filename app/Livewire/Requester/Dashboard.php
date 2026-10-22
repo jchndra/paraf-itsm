@@ -7,11 +7,22 @@ use App\Models\ChangeRequest;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Spatie\Activitylog\Models\Activity;
 
 class Dashboard extends Component
 {
+    public string $statusMessage = '';
+
+    #[On('rfc-deleted')]
+    public function handleRfcDeleted(string $message = ''): void
+    {
+        $this->statusMessage = $message !== ''
+            ? $message
+            : 'RFC berhasil dihapus dan dipindahkan ke Riwayat Penghapusan.';
+    }
+
     public function render()
     {
         /** @var User $user */

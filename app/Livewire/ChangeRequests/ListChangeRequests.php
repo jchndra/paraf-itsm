@@ -3,9 +3,13 @@
 namespace App\Livewire\ChangeRequests;
 
 use App\Enums\RfcStatus;
+use App\Models\Application;
 use App\Models\ChangeRequest;
+use App\Models\Opd;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -22,6 +26,76 @@ class ListChangeRequests extends Component
     public string $statusFilter = '';
 
     public string $categoryFilter = '';
+
+    public string $applicationFilter = '';
+
+    public string $opdFilter = '';
+
+    public string $dateFrom = '';
+
+    public string $dateTo = '';
+
+    public string $statusMessage = '';
+
+    #[On('rfc-deleted')]
+    public function handleRfcDeleted(string $message = ''): void
+    {
+        $this->statusMessage = $message !== ''
+            ? $message
+            : 'RFC berhasil dihapus dan dipindahkan ke Riwayat Penghapusan.';
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedStatusFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedCategoryFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedApplicationFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedOpdFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedDateFrom(): void
+    {
+        $this->validate(['dateFrom' => 'nullable|date']);
+        $this->resetPage();
+    }
+
+    public function updatedDateTo(): void
+    {
+        $this->validate(['dateTo' => 'nullable|date']);
+        $this->resetPage();
+    }
+
+    public function resetFilters(): void
+    {
+        $this->reset(
+            'search',
+            'statusFilter',
+            'categoryFilter',
+            'applicationFilter',
+            'opdFilter',
+            'dateFrom',
+            'dateTo',
+        );
+
+        $this->resetPage();
+    }
 
     public function mount(?ChangeRequest $rfc = null): void
     {
@@ -58,6 +132,20 @@ class ListChangeRequests extends Component
             ]);
         }
 
+        // Opsi filter dipakai oleh seluruh tampilan peran.
+        $filterOptions = [
+            'applications' => Application::orderBy('name')->get(['id', 'name']),
+            'opds' => Opd::orderBy('name')->get(['id', 'name']),
+            'statuses' => collect(RfcStatus::cases())->mapWithKeys(
+                fn (RfcStatus $status) => [$status->value => $status->label()]
+            ),
+            'changeTypes' => [
+                'standard' => 'Standard',
+                'normal' => 'Normal',
+                'emergency' => 'Darurat (Emergency)',
+            ],
+        ];
+
         // 1. Tampilan Dashboard Pemohon (Hanya memiliki role Pemohon)
         if ($user->hasRole('Pemohon') && ! $user->hasRole('Admin') && ! $user->hasRole('Change Manager') && ! $user->hasRole('Super Admin')) {
             $baseQuery = ChangeRequest::query()->where('submitted_by_id', $user->id);
@@ -70,11 +158,11 @@ class ListChangeRequests extends Component
                 'rejected' => (clone $baseQuery)->whereIn('status', RfcStatus::valuesForGroup('rejected'))->count(),
             ];
 
-            $rfcs = (clone $baseQuery)
-                ->with('riskAssessment')
-                ->when($this->search, fn ($q) => $q->where(fn ($sub) => $sub
-                    ->where('title', 'like', "%{$this->search}%")
-                    ->orWhere('rfc_number', 'like', "%{$this->search}%")))
+            $rfcs = $this->applyFilters((clone $baseQuery)->with([
+                'riskAssessment',
+                'application',
+                'submittedBy.opd',
+            ]))
                 ->latest()
                 ->paginate(10);
 
@@ -83,7 +171,7 @@ class ListChangeRequests extends Component
                 'stats' => $stats,
                 'rfcs' => $rfcs,
                 'notifications' => $user->unreadNotifications()->take(5)->get(),
-            ]);
+            ] + $filterOptions);
         }
 
         // 2. Tampilan Dashboard Admin / Frontdesk (Prioritas Admin murni)
@@ -101,12 +189,11 @@ class ListChangeRequests extends Component
                 'rejected' => ChangeRequest::whereIn('status', RfcStatus::valuesForGroup('rejected'))->count(),
             ];
 
-            $rfcs = ChangeRequest::query()
-                ->with('riskAssessment')
-                ->when($this->search, fn ($q) => $q->where(fn ($sub) => $sub
-                    ->where('title', 'like', "%{$this->search}%")
-                    ->orWhere('rfc_number', 'like', "%{$this->search}%")))
-                ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
+            $rfcs = $this->applyFilters(ChangeRequest::query()->with([
+                'riskAssessment',
+                'application',
+                'submittedBy.opd',
+            ]))
                 ->latest()
                 ->paginate(10);
 
@@ -115,7 +202,7 @@ class ListChangeRequests extends Component
                 'stats' => $stats,
                 'rfcs' => $rfcs,
                 'notifications' => $user->unreadNotifications()->take(5)->get(),
-            ]);
+            ] + $filterOptions);
         }
 
         // 3. Tampilan Dashboard Change Manager / Super Admin
@@ -129,13 +216,11 @@ class ListChangeRequests extends Component
             'emergency' => ChangeRequest::where('change_type', 'emergency')->count(),
         ];
 
-        $rfcs = ChangeRequest::query()
-            ->with('riskAssessment')
-            ->when($this->search, fn ($q) => $q->where(fn ($sub) => $sub
-                ->where('title', 'like', "%{$this->search}%")
-                ->orWhere('rfc_number', 'like', "%{$this->search}%")))
-            ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
-            ->when($this->categoryFilter, fn ($q) => $q->where('change_type', $this->categoryFilter))
+        $rfcs = $this->applyFilters(ChangeRequest::query()->with([
+            'riskAssessment',
+            'application',
+            'submittedBy.opd',
+        ]))
             ->latest()
             ->paginate(10);
 
@@ -144,6 +229,23 @@ class ListChangeRequests extends Component
             'stats' => $stats,
             'rfcs' => $rfcs,
             'notifications' => $user->unreadNotifications()->take(5)->get(),
-        ]);
+        ] + $filterOptions);
+    }
+
+    private function applyFilters(Builder $query): Builder
+    {
+        return $query
+            ->when($this->search !== '', fn (Builder $q) => $q->where(fn (Builder $sub) => $sub
+                ->where('title', 'like', "%{$this->search}%")
+                ->orWhere('rfc_number', 'like', "%{$this->search}%")))
+            ->when($this->statusFilter !== '', fn (Builder $q) => $q->where('status', $this->statusFilter))
+            ->when($this->categoryFilter !== '', fn (Builder $q) => $q->where('change_type', $this->categoryFilter))
+            ->when($this->applicationFilter !== '', fn (Builder $q) => $q->where('application_id', $this->applicationFilter))
+            ->when($this->opdFilter !== '', fn (Builder $q) => $q->whereHas(
+                'submittedBy',
+                fn (Builder $sub) => $sub->where('opd_id', $this->opdFilter)
+            ))
+            ->when($this->dateFrom !== '', fn (Builder $q) => $q->whereDate('created_at', '>=', $this->dateFrom))
+            ->when($this->dateTo !== '', fn (Builder $q) => $q->whereDate('created_at', '<=', $this->dateTo));
     }
 }
